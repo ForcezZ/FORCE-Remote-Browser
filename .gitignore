@@ -1,0 +1,6 @@
+# Build output
+*.exe
+force-remote-browser
+
+# Saved settings (contain your Force's IP address)
+force_browser.json
