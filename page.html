@@ -64,7 +64,7 @@ footer.err{color:#ff8a7a}
 </header>
 <main><div class="pane" id="p0"><div class="nav"><button class="back" title="Back (Backspace)">◀ Back</button><button class="up" title="Up one level (Alt+Up)">▲ Up</button><button class="open" title="Open selected folder (Enter)">Open</button><div class="crumbs"></div></div><div class="cols"></div><div class="list"></div></div>
 <div class="pane" id="p1"><div class="nav"><button class="back" title="Back (Backspace)">◀ Back</button><button class="up" title="Up one level (Alt+Up)">▲ Up</button><button class="open" title="Open selected folder (Enter)">Open</button><div class="crumbs"></div></div><div class="cols"></div><div class="list"></div></div></main>
-<footer id="status">Click to select, double-click a folder (or Open) to go into it, Back or Up to go back.</footer>
+<footer id="status">Left: your Force. Right: this PC. Copy or cut on one side, then Paste on the other.</footer>
 <div id="login"><form id="loginform">
 <h2>Connect to your Force</h2>
 <label>IP address of the Force<input id="host" placeholder="e.g. 192.168.1.50" required></label>
@@ -76,10 +76,12 @@ footer.err{color:#ff8a7a}
 </form></div>
 <script>
 const TOKEN="__TOKEN__";
-let ROOT="/media";
-const panes=[0,1].map(i=>({el:document.getElementById('p'+i),path:ROOT,items:[],sel:new Set(),sort:'name',asc:true,history:[]}));
+// Left pane: the Force's drives. Right pane: this computer's drives.
+const SIDES=[{side:'force',root:'/media',label:'Force'},{side:'pc',root:'/',label:'This PC'}];
+const panes=SIDES.map((s,i)=>({el:document.getElementById('p'+i),side:s.side,root:s.root,label:s.label,path:s.root,
+  items:[],sel:new Set(),sort:'name',asc:true,history:[]}));
 let active=0;
-let clip=null; // {op:'copy'|'move', paths:[...]}
+let clip=null; // {op:'copy'|'move', side:'force'|'pc', paths:[...]}
 const $=id=>document.getElementById(id);
 const status=$('status');
 function say(t,err){status.textContent=t;status.className=err?'err':'';}
@@ -97,7 +99,7 @@ function updateClip(){
   $('clip').textContent=clip?(plural(clip.paths.length)+(clip.op==='move'?' cut':' copied')+', ready to paste'):'';
 }
 const COLS=[['name','Name',''],['type','Type',''],['size','Size','num'],['modified','Date modified','']];
-function ext(it){if(it.dir)return 'Folder';const m=/\.([^.]+)$/.exec(it.name);return m&&m.index>0?m[1].toUpperCase():'';}
+function ext(it){if(it.drive)return 'Drive';if(it.dir)return 'Folder';const m=/\.([^.]+)$/.exec(it.name);return m&&m.index>0?m[1].toUpperCase():'';}
 function fmtSize(n){if(n<0)return '';if(n<1024)return n+' B';const u=['KB','MB','GB','TB'];let i=-1;
   do{n/=1024;i++;}while(n>=1024&&i<u.length-1);return (n<10?n.toFixed(1):Math.round(n))+' '+u[i];}
 function fmtDate(t){if(!t)return '';const d=new Date(t*1000),z=x=>String(x).padStart(2,'0');
@@ -128,11 +130,11 @@ function render(i){
   const row=(cells,cls,click,dbl)=>{const d=document.createElement('div');d.className='row '+cls;
     cells.forEach(c=>d.appendChild(c));
     d.onclick=e=>{e.stopPropagation();click();};if(dbl)d.ondblclick=e=>{e.stopPropagation();dbl();};list.appendChild(d);};
-  if(p.path!==ROOT) row([cell('⬆ ..','nm')],'dir',()=>{active=i;up(i);});
+  if(p.path!==p.root) row([cell('⬆ ..','nm')],'dir',()=>{active=i;up(i);});
   for(const it of sorted(p)){
     const full=join(p.path,it.name);
-    const isCut=clip&&clip.op==='move'&&clip.paths.includes(full);
-    row([cell((it.dir?'📁 ':'')+it.name,'nm'),cell(ext(it),'meta'),cell(it.dir?'':fmtSize(it.size),'meta num'),
+    const isCut=clip&&clip.op==='move'&&clip.side===p.side&&clip.paths.includes(full);
+    row([cell((it.drive?'💽 ':it.dir?'📁 ':'')+it.name,'nm'),cell(ext(it),'meta'),cell(it.dir?'':fmtSize(it.size),'meta num'),
          cell(fmtDate(it.modified),'meta')],
       (it.dir?'dir ':'')+(p.sel.has(it.name)?'sel ':'')+(isCut?'cut':''),
       ()=>{active=i;p.sel.has(it.name)?p.sel.delete(it.name):p.sel.add(it.name);renderAll();},
@@ -144,7 +146,7 @@ function renderAll(){render(0);render(1);}
 async function load(i,path){
   const p=panes[i];
   let ok=false;
-  try{const r=await api({op:'list',path:path||p.path});p.path=r.path;p.items=r.items;p.sel=new Set();ok=true;}
+  try{const r=await api({op:'list',side:p.side,path:path||p.path});p.path=r.path;p.items=r.items;p.sel=new Set();ok=true;}
   catch(e){say(e.message,true);}
   renderAll();
   return ok;
@@ -160,7 +162,7 @@ async function back(i){
   if(!p.history.length) return say('Nothing to go back to in this pane.',true);
   await load(i,p.history.pop());
 }
-function up(i){const p=panes[i];if(p.path===ROOT)return say('You are already at the top level.',true);go(i,parent(p.path));}
+function up(i){const p=panes[i];if(p.path===p.root)return say('You are already at the top level.',true);go(i,parent(p.path));}
 function openSel(i){
   const p=panes[i], dirs=p.items.filter(it=>it.dir&&p.sel.has(it.name));
   if(p.sel.size!==1||dirs.length!==1) return say('Select one folder to open.',true);
@@ -169,14 +171,14 @@ function openSel(i){
 function renderNav(i){
   const p=panes[i], nav=p.el.querySelector('.nav');
   nav.querySelector('.back').disabled=!p.history.length;
-  nav.querySelector('.up').disabled=p.path===ROOT;
+  nav.querySelector('.up').disabled=p.path===p.root;
   const c=nav.querySelector('.crumbs'); c.textContent='';
   const b=document.createElement('bdi'); c.appendChild(b);
   const link=(label,path)=>{const a=document.createElement('a');a.textContent=label;a.title=path;
     a.onclick=e=>{e.stopPropagation();active=i;go(i,path);};b.appendChild(a);};
-  link('Drives',ROOT);
-  const rest=p.path.startsWith(ROOT)?p.path.slice(ROOT.length).split('/').filter(Boolean):[];
-  let acc=ROOT;
+  link(p.label,p.root);
+  const rest=p.path.startsWith(p.root)?p.path.slice(p.root.length).split('/').filter(Boolean):[];
+  let acc=p.root;
   for(const part of rest){
     acc=join(acc,part);
     const s=document.createElement('span');s.className='s';s.textContent='›';b.appendChild(s);
@@ -192,8 +194,8 @@ panes.forEach((p,i)=>{
   p.el.addEventListener('mouseup',e=>{if(e.button===3){e.preventDefault();active=i;back(i);}});
 });
 function picked(){const p=panes[active];return [...p.sel].map(n=>join(p.path,n));}
-async function act(body,done){
-  busy(true);say('Working…');
+async function act(body,done,working){
+  busy(true);say(working||'Working…');
   let ok=false;
   try{const r=await api(body);
     if(r.errors&&r.errors.length) say('Not everything worked:\n'+r.errors.join('\n'),true); else {say(done);ok=true;}}
@@ -203,27 +205,29 @@ async function act(body,done){
 }
 function toClip(op){
   const src=picked(); if(!src.length) return say('Select something first.',true);
-  clip={op,paths:src};
+  clip={op,side:panes[active].side,paths:src};
   panes[active].sel=new Set();
   updateClip();renderAll();
   say(plural(src.length)+(op==='move'?' cut':' copied')+'. Open the folder where they should go and click Paste.');
 }
 async function paste(){
   if(!clip) return say('Copy or cut something first.',true);
-  const dest=panes[active].path, c=clip;
-  const ok=await act({op:c.op,sources:c.paths,dest},plural(c.paths.length)+' pasted into '+dest+'.');
+  const dp=panes[active], dest=dp.path, c=clip;
+  const working=c.side===dp.side?'':(c.side==='pc'?'Sending to the Force':'Copying to this PC')+'… large files can take a while.';
+  const ok=await act({op:c.op,srcSide:c.side,sources:c.paths,destSide:dp.side,dest},
+    plural(c.paths.length)+' pasted into '+dp.label+' '+dest+'.',working);
   if(c.op==='move'){clip=null;updateClip();renderAll();} // cut items can only be pasted once
   return ok;
 }
 function rename(){
   const p=panes[active]; if(p.sel.size!==1) return say('Select exactly one item to rename.',true);
   const old=[...p.sel][0], name=prompt('New name:',old);
-  if(name&&name!==old) act({op:'rename',path:join(p.path,old),name},'Renamed.');
+  if(name&&name!==old) act({op:'rename',side:p.side,path:join(p.path,old),name},'Renamed.');
 }
 function del(){
   const src=picked(); if(!src.length) return say('Select something first.',true);
   if(confirm('Permanently delete '+plural(src.length)+'? This cannot be undone.\n\n'+src.join('\n')))
-    act({op:'delete',paths:src},'Deleted.');
+    act({op:'delete',side:panes[active].side,paths:src},'Deleted.');
 }
 function selectAll(){
   const p=panes[active];
@@ -238,7 +242,7 @@ $('paste').onclick=paste;
 $('rename').onclick=rename;
 $('mkdir').onclick=()=>{
   const name=prompt('Name of the new folder:');
-  if(name) act({op:'mkdir',path:panes[active].path,name},'Folder created.');
+  if(name) act({op:'mkdir',side:panes[active].side,path:panes[active].path,name},'Folder created.');
 };
 $('delete').onclick=del;
 $('refresh').onclick=()=>{load(0);load(1);};
@@ -261,9 +265,10 @@ document.addEventListener('keydown',e=>{
 
 function showLogin(msg){$('login').style.display='flex';$('loginmsg').textContent=msg||'';$('host').focus();}
 function start(s){
-  ROOT=s.root;$('login').style.display='none';
-  panes.forEach(p=>{p.path=ROOT;p.history=[];});
-  say('Connected to '+s.host+'. Click to select, double-click a folder (or Open) to go into it, Back or Up to go back.');
+  $('login').style.display='none';
+  panes[0].root=s.root;
+  panes.forEach(p=>{p.path=p.root;p.history=[];});
+  say('Connected to '+s.host+'. Left: your Force. Right: this PC. Copy or cut on one side, then Paste on the other.');
   load(0);load(1);
 }
 $('loginform').onsubmit=async e=>{
