@@ -1,17 +1,18 @@
 # FORCE Remote Browser
 
-A simple file manager for the **Akai Force**, run from your PC. Copy, cut, paste, rename and delete files on your Force, and move them between its drives (internal SSD, SD card, USB), without taking the drive out.
+A simple file manager for the **Akai Force**, run from your PC. Copy, cut, paste, rename and delete files on your Force, move them between its drives (internal SSD, SD card, USB), and copy files between the Force and your computer, all without taking a drive out.
 
-FORCE Remote Browser runs as a small program on your computer and opens a two-pane browser page. Every file operation runs on the Force itself over SSH, so copying between drives on the Force never sends the files through your PC.
+FORCE Remote Browser runs as a small program on your computer and opens a two-pane browser page: **the Force's drives on the left, your computer's drives on the right**. Work on the Force runs on the Force itself over SSH, so copying between the Force's own drives never sends the files through your PC.
 
 > **Unofficial.** This project is not made, endorsed or supported by Akai Professional or inMusic. Use it at your own risk and keep backups of anything important.
 
 ## Features
 
-- Two panes side by side, so you can show one drive on the left and another on the right
+- Two panes side by side: the Force's drives on the left, your computer's drives (C:, D:, USB sticks) on the right
+- Copy or cut files from your PC and paste them onto the Force, or the other way round
 - Name, Type, Size and Date modified columns; click a column header to sort by it
 - **Back**, **Up** and **Open** buttons in each pane, plus a clickable folder path to jump to any higher level
-- **Copy**, **Cut** and **Paste** between any folders, including across drives
+- **Copy**, **Cut** and **Paste** between any folders, including across drives and between the Force and your PC
 - **Select all**, **Rename**, **New folder** and **Delete** (asks for confirmation)
 - Never overwrites: if a file with the same name already exists, it tells you and skips it
 - Remembers your Force's IP address, so later it connects straight away
@@ -29,7 +30,7 @@ FORCE Remote Browser runs as a small program on your computer and opens a two-pa
 | Enter | Open the selected folder |
 | Backspace / Alt+Left | Back to the previous folder |
 | Alt+Up | Up one level |
-| Tab | Switch between the left and right pane |
+| Tab | Switch between the Force pane and the PC pane |
 
 ## Requirements
 
@@ -42,7 +43,7 @@ FORCE Remote Browser runs as a small program on your computer and opens a two-pa
 1. Download `FORCE Remote Browser.exe` from the [Releases](../../releases) page.
 2. Double-click it. A console window opens, and the browser page opens in your web browser.
 3. Enter your Force's IP address and click **Connect**. The default user is `root`; leave the password empty if your Force has none.
-4. Select files, click **Copy** or **Cut**, open the destination folder in either pane, and click **Paste**.
+4. Select files, click **Copy** or **Cut**, open the destination folder in either pane, and click **Paste**. To move samples onto the Force, copy them in the right (PC) pane and paste them in the left (Force) pane.
 
 Keep the console window open while you use FORCE Remote Browser. Closing it stops the program.
 
@@ -50,7 +51,8 @@ Windows may warn about an unknown app the first time because the program is not 
 
 ### Settings
 
-- **Folder that holds the drives**: FORCE Remote Browser only works inside this folder (default `/media`), so it cannot touch the Force's system files. Change it on the connect screen if your drives are mounted somewhere else.
+- **Folder that holds the drives**: on the Force side, FORCE Remote Browser only works inside this folder (default `/media`), so it cannot touch the Force's system files. Change it on the connect screen if your drives are mounted somewhere else.
+- The PC side shows all drives on your computer. Whole drives cannot be renamed or deleted, but files and folders on them can, so take care with **Delete** there too.
 - The IP address, user and drives folder are saved in `force_browser.json` next to the program. Your password is never saved.
 
 ## Building from source
@@ -69,7 +71,7 @@ On Windows in PowerShell, set the variables first: `$env:GOOS="windows"; $env:GO
 
 ### Test mode
 
-To try the interface without a Force, run it against a local folder (macOS/Linux):
+To try the interface without a Force, run it against a local folder (macOS/Linux). The Force pane then shows that folder:
 
 ```sh
 FORCE_LOCAL=1 FORCE_ROOT=/path/to/a/test/folder go run .
@@ -78,7 +80,9 @@ FORCE_LOCAL=1 FORCE_ROOT=/path/to/a/test/folder go run .
 ## How it works
 
 - `main.go` starts a small web server on `127.0.0.1` only, so other devices on your network cannot reach it. A random token protects it from other websites.
-- Each action is turned into a shell command (`ls`, `cp -r`, `mv`, `mkdir`, `rm -rf`) and sent to the Force with the system's `ssh` program. File names are quoted safely, and every path is checked to stay inside the drives folder.
+- Each action on the Force is turned into a shell command (`ls`, `cp -r`, `mv`, `mkdir`, `rm -rf`) and sent to the Force with the system's `ssh` program. File names are quoted safely, and every path is checked to stay inside the drives folder.
+- Files go between the PC and the Force as a `tar` stream over the same SSH connection, so no extra tools are needed. Nothing is ever overwritten.
+- Actions on the PC side use the computer's own file system directly.
 - `page.html` is the interface. It is built into the program at compile time.
 
 ## Security notes
